@@ -10,6 +10,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@sprisa/npmreleaser": "^0.0.2"
+    "@sprisa/npmreleaser": "0.0.3"
   }
 }
