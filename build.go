@@ -22,10 +22,10 @@ import (
 )
 
 var BuildCommand = &cli.Command{
-	Name:     "build",
+	Name: "build",
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
-			Name: "clean",
+			Name:  "clean",
 			Usage: "Clean out dir before running",
 		},
 	},
@@ -106,8 +106,8 @@ var BuildCommand = &cli.Command{
 			}
 
 			builds = append(builds, PlatformBuild{
-				pkgName:  fmt.Sprintf("%s_%s-%s", pkgName, nodeOs, nodeArch),
-				binName: binName,
+				pkgName:  fmt.Sprintf("%s_%s-%s", pkgName, os, arch),
+				binName:  binName,
 				goos:     os,
 				goarch:   arch,
 				nodeOs:   nodeOs,
@@ -327,7 +327,6 @@ switch (platform) {
 
 		// Publish
 
-
 		return nil
 	},
 }
@@ -343,7 +342,7 @@ type ConfigSpec struct {
 
 type PlatformBuild struct {
 	pkgName  string
-	binName string
+	binName  string
 	goos     string
 	goarch   string
 	nodeOs   string
