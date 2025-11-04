@@ -6,7 +6,7 @@ Release your Go package on NPM
 
 **With NPM**  
 ```sh
-npx @sprisa/npmreleaser@latest build --help
+npx @sprisa/npmreleaser build --help
 ```
 
 **With Go**  
