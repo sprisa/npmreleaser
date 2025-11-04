@@ -167,7 +167,7 @@ var BuildCommand = &cli.Command{
 				cmd.Env = append(
 					cmd.Env,
 					"GOOS="+build.goos,
-					"goarch="+build.goarch,
+					"GOARCH="+build.goarch,
 				)
 				// l.Log.Info().Msg(cmd.String())
 				out, err := cmd.CombinedOutput()
@@ -261,7 +261,10 @@ switch (platform) {
 				{ stdio: "inherit" }
 			)
 		} catch(err) {
-			process.exit(err.status);
+		 	if (typeof err.status === "number") {
+				process.exit(err.status);
+			}
+			console.err(err)
 		}
 		break;
 	}`,
