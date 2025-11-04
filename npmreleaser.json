@@ -1,0 +1,32 @@
+{
+  "package.json": {
+    "name": "@sprisa/npmreleaser",
+    "version": "0.0.4",
+    "description": "Publish your Go package on NPM",
+    "license": "MPL-2.0",
+    "author": "Gabriel Meola <banter@gabe.mx>",
+    "keywords": [
+      "golang",
+      "npm",
+      "goreleaser"
+    ],
+    "homepage": "https://github.com/sprisa/npmreleaser",
+    "bugs": {
+      "url": "https://github.com/sprisa/npmreleaser/issues"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/sprisa/npmreleaser.git"
+    }
+  },
+  "bin": "npmreleaser",
+  "gobuild": "go build -ldflags=\"-s -w\"",
+  "platforms": [
+    "linux/amd64",
+    "linux/arm64",
+    "darwin/amd64",
+    "darwin/arm64",
+    "windows/amd64",
+    "windows/arm64"
+  ]
+}
