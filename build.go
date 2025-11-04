@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,12 +25,33 @@ import (
 var BuildCommand = &cli.Command{
 	Name: "build",
 	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "out-dir",
+			Usage:   "Output directory",
+			Aliases: []string{"o"},
+			Value:   "dist/npm",
+		},
 		&cli.BoolFlag{
 			Name:  "clean",
 			Usage: "Clean out dir before running",
 		},
+		&cli.BoolFlag{
+			Name:  "publish",
+			Usage: "Publish all packages with npm publish",
+		},
+		&cli.BoolFlag{
+			Name:  "dry-run",
+			Usage: "Dry run publish",
+		},
 	},
-	Action: func(ctx context.Context, cmd *cli.Command) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
+		var (
+			outDir        = c.String("out-dir")
+			shouldClean   = c.Bool("clean")
+			shouldPublish = c.Bool("publish")
+			dryPublish    = c.Bool("dry-run")
+		)
+
 		file, err := os.Open("npmreleaser.json")
 		if err != nil {
 			return errutil.WrapError(err, "error finding npmreleaser.json")
@@ -41,17 +63,6 @@ var BuildCommand = &cli.Command{
 		err = dec.Decode(cfg)
 		if err != nil {
 			return errutil.WrapError(err, "error parsing npmreleaser.json")
-		}
-
-		outDir := "dist/npm"
-		if cfg.OutDir != "" {
-			outDir = cfg.OutDir
-		}
-		if cmd.Bool("clean") {
-			err = os.RemoveAll(outDir)
-			if err != nil {
-				return errutil.WrapError(err, "error cleaning out dir")
-			}
 		}
 
 		pkgFiles := mapset.NewThreadUnsafeSet(
@@ -105,9 +116,11 @@ var BuildCommand = &cli.Command{
 				binName += ".exe"
 			}
 
+			pkgName := fmt.Sprintf("%s_%s-%s", pkgName, os, arch)
 			builds = append(builds, PlatformBuild{
-				pkgName:  fmt.Sprintf("%s_%s-%s", pkgName, os, arch),
+				pkgName:  pkgName,
 				binName:  binName,
+				pkgDir:   filepath.Join(outDir, pkgName),
 				goos:     os,
 				goarch:   arch,
 				nodeOs:   nodeOs,
@@ -122,13 +135,19 @@ var BuildCommand = &cli.Command{
 
 		// Build individual packages
 		l.Log.Info().Msgf("Building %s@v%s for %d platforms", pkgName, version, len(cfg.Platforms))
+		if shouldClean {
+			err = os.RemoveAll(outDir)
+			if err != nil {
+				return errutil.WrapError(err, "error cleaning out dir")
+			}
+		}
 
 		goBuildCmd := "go build"
 		if cfg.GoBuildCmd != "" {
 			goBuildCmd = cfg.GoBuildCmd
 		}
 
-		group, ctx := errgroup.WithContext(ctx)
+		group, gCtx := errgroup.WithContext(ctx)
 		for _, build := range builds {
 			pkgDir := filepath.Join(outDir, build.pkgName)
 
@@ -140,7 +159,7 @@ var BuildCommand = &cli.Command{
 				binPath := filepath.Join(pkgDir, build.binName)
 				// Go Build
 				cmd := newCmd(
-					ctx,
+					gCtx,
 					goBuildCmd,
 					"-o", binPath,
 				)
@@ -323,10 +342,66 @@ switch (platform) {
 			}
 		}
 
-		l.Log.Info().Msg("✨ Done")
-
 		// Publish
+		group, gCtx = errgroup.WithContext(ctx)
+		if shouldPublish {
+			publishCmd := "npm publish"
+			if dryPublish {
+				publishCmd += " --dry-run"
+			}
+			// Publish the first one in interactive mode
+			// so user can enter token or otp code.
+			build := builds[0]
+			cmd := newCmd(ctx, publishCmd)
+			cmd.Dir = build.pkgDir
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err := cmd.Run()
+			if err != nil {
+				return err
+			}
 
+			// Publish the rest if the first completes
+			if len(builds) > 1 {
+				for _, build := range builds[1:] {
+					group.Go(func() error {
+						cmd := newCmd(ctx, publishCmd)
+						var stderr bytes.Buffer
+						cmd.Dir = build.pkgDir
+						cmd.Stdin = os.Stdin
+						cmd.Stdout = os.Stdout
+						// npm publish uses stderr for output info. Buffer this.
+						cmd.Stderr = &stderr
+						err = cmd.Run()
+						println()
+						print(stderr.String())
+						return err
+					})
+				}
+			}
+
+			// Publish the main package
+			group.Go(func() error {
+				cmd := newCmd(ctx, publishCmd)
+				var stderr bytes.Buffer
+				cmd.Dir = pkgDir
+				cmd.Stdin = os.Stdin
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = &stderr
+				err = cmd.Run()
+				println()
+				print(stderr.String())
+				return err
+			})
+
+		}
+
+		err = group.Wait()
+		if err != nil {
+			return err
+		}
+		l.Log.Info().Msg("✨ Done")
 		return nil
 	},
 }
@@ -336,13 +411,13 @@ type ConfigSpec struct {
 	Bin        string         `json:"bin"`
 	Platforms  []string       `json:"platforms"`
 	GoBuildCmd string         `json:"gobuild"`
-	OutDir     string         `json:"outdir"`
 	Files      []string       `json:"files"`
 }
 
 type PlatformBuild struct {
 	pkgName  string
 	binName  string
+	pkgDir   string
 	goos     string
 	goarch   string
 	nodeOs   string
@@ -380,5 +455,7 @@ func goArchToNode(name string) (string, error) {
 
 func newCmd(ctx context.Context, scripts ...string) *exec.Cmd {
 	lines, _ := shlex.Split(strings.Join(scripts, " "))
-	return exec.CommandContext(ctx, lines[0], lines[1:]...)
+	cmd := exec.CommandContext(ctx, lines[0], lines[1:]...)
+	cmd.Env = os.Environ()
+	return cmd
 }
