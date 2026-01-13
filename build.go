@@ -16,8 +16,8 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/google/shlex"
 	"github.com/samber/lo"
-	"github.com/sprisa/npmreleaser/util/errutil"
-	l "github.com/sprisa/npmreleaser/util/log"
+	"github.com/sprisa/x/errutil"
+	l "github.com/sprisa/x/log"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
 )
@@ -54,7 +54,7 @@ var BuildCommand = &cli.Command{
 
 		file, err := os.Open("npmreleaser.json")
 		if err != nil {
-			return errutil.WrapError(err, "error finding npmreleaser.json")
+			return errutil.WrapErr(err, "error finding npmreleaser.json")
 		}
 		defer file.Close()
 
@@ -62,7 +62,7 @@ var BuildCommand = &cli.Command{
 		cfg := &ConfigSpec{}
 		err = dec.Decode(cfg)
 		if err != nil {
-			return errutil.WrapError(err, "error parsing npmreleaser.json")
+			return errutil.WrapErr(err, "error parsing npmreleaser.json")
 		}
 
 		pkgFiles := mapset.NewThreadUnsafeSet(
@@ -130,7 +130,7 @@ var BuildCommand = &cli.Command{
 
 		err = os.MkdirAll(outDir, 0700)
 		if err != nil {
-			return errutil.WrapError(err, "error creating out dir")
+			return errutil.WrapErr(err, "error creating out dir")
 		}
 
 		// Build individual packages
@@ -138,7 +138,7 @@ var BuildCommand = &cli.Command{
 		if shouldClean {
 			err = os.RemoveAll(outDir)
 			if err != nil {
-				return errutil.WrapError(err, "error cleaning out dir")
+				return errutil.WrapErr(err, "error cleaning out dir")
 			}
 		}
 
@@ -153,7 +153,7 @@ var BuildCommand = &cli.Command{
 
 			err := os.MkdirAll(pkgDir, 0700)
 			if err != nil {
-				return errutil.WrapError(err, "error create dir `%s`", pkgDir)
+				return errutil.WrapErr(err, "error create dir `%s`", pkgDir)
 			}
 			group.Go(func() error {
 				binPath := filepath.Join(pkgDir, build.binName)
@@ -216,7 +216,7 @@ var BuildCommand = &cli.Command{
 					filepath.Join(pkgDir, "package.json"),
 				)
 				if err != nil {
-					return errutil.WrapError(err, "error writing package.json")
+					return errutil.WrapErr(err, "error writing package.json")
 				}
 				defer pkgFile.Close()
 
@@ -225,7 +225,7 @@ var BuildCommand = &cli.Command{
 				enc.SetIndent("", "  ")
 				err = enc.Encode(pkgJson)
 				if err != nil {
-					return errutil.WrapError(err, "error building package.json")
+					return errutil.WrapErr(err, "error building package.json")
 				}
 
 				l.Log.Info().Msgf("Done: %s/%s", build.goos, build.goarch)
@@ -281,7 +281,7 @@ switch (platform) {
 		pkgDir := filepath.Join(outDir, pkgName)
 		err = os.MkdirAll(pkgDir, 0700)
 		if err != nil {
-			return errutil.WrapError(err, "error creating root package dir")
+			return errutil.WrapErr(err, "error creating root package dir")
 		}
 
 		err = os.WriteFile(
@@ -290,7 +290,7 @@ switch (platform) {
 			0700,
 		)
 		if err != nil {
-			return errutil.WrapError(err, "error building root package command")
+			return errutil.WrapErr(err, "error building root package command")
 		}
 
 		// Create main package.json
@@ -306,7 +306,7 @@ switch (platform) {
 			filepath.Join(pkgDir, "package.json"),
 		)
 		if err != nil {
-			return errutil.WrapError(err, "error writing main package.json")
+			return errutil.WrapErr(err, "error writing main package.json")
 		}
 		defer pkgFile.Close()
 
@@ -315,7 +315,7 @@ switch (platform) {
 		enc.SetIndent("", "  ")
 		err = enc.Encode(pkgJson)
 		if err != nil {
-			return errutil.WrapError(err, "error building main package.json")
+			return errutil.WrapErr(err, "error building main package.json")
 		}
 
 		// Copy files

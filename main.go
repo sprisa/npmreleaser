@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	l "github.com/sprisa/npmreleaser/util/log"
-	"github.com/sprisa/npmreleaser/util/sig"
+	l "github.com/sprisa/x/log"
+	"github.com/sprisa/x/sig"
 	"github.com/urfave/cli/v3"
 )
 
