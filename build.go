@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -239,44 +238,7 @@ var BuildCommand = &cli.Command{
 
 		// Build main package
 		binFileName := filepath.Base(pkgName)
-		binFile := fmt.Sprintf(`
-#!/usr/bin/env node
-
-const { execFileSync } = require('child_process');
-
-const platform = process.platform + '/' + process.arch;
-switch (platform) {
-  %s
-  default:
-    throw new Error('Unsupported platform: ' + platform)
-}`,
-			strings.Join(
-				lo.Map(builds, func(build PlatformBuild, _ int) string {
-					return fmt.Sprintf(`
-	case "%s": {
-		try {
-			execFileSync(
-				require.resolve('%s/package.json').replace('package.json', '%s'),
-				process.argv.slice(2),
-				{ stdio: "inherit" }
-			)
-		} catch(err) {
-		 	if (typeof err.status === "number") {
-				process.exit(err.status);
-			}
-			console.err(err)
-		}
-		break;
-	}`,
-						fmt.Sprintf("%s/%s", build.nodeOs, build.nodeArch),
-						build.pkgName,
-						build.binName,
-					)
-				}),
-				"  ",
-			),
-		)
-		binFile = strings.TrimSpace(binFile)
+		binFile := renderLauncher(builds)
 
 		pkgDir := filepath.Join(outDir, pkgName)
 		err = os.MkdirAll(pkgDir, 0700)
@@ -345,68 +307,69 @@ switch (platform) {
 			}
 		}
 
-		// Publish
-		group, gCtx = errgroup.WithContext(ctx)
 		if shouldPublish {
-			publishCmd := "npm publish"
-			if dryPublish {
-				publishCmd += " --dry-run"
-			}
-			// Publish the first one in interactive mode
-			// so user can enter token or otp code.
-			build := builds[0]
-			cmd := newCmd(ctx, publishCmd)
-			cmd.Dir = build.pkgDir
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err := cmd.Run()
-			if err != nil {
+			if err := publishPackages(ctx, builds, pkgDir, dryPublish); err != nil {
 				return err
 			}
-
-			// Publish the rest if the first completes
-			if len(builds) > 1 {
-				for _, build := range builds[1:] {
-					group.Go(func() error {
-						cmd := newCmd(ctx, publishCmd)
-						var stderr bytes.Buffer
-						cmd.Dir = build.pkgDir
-						cmd.Stdin = os.Stdin
-						cmd.Stdout = os.Stdout
-						// npm publish uses stderr for output info. Buffer this.
-						cmd.Stderr = &stderr
-						err = cmd.Run()
-						println()
-						print(stderr.String())
-						return err
-					})
-				}
-			}
-
-			// Publish the main package
-			group.Go(func() error {
-				cmd := newCmd(ctx, publishCmd)
-				var stderr bytes.Buffer
-				cmd.Dir = pkgDir
-				cmd.Stdin = os.Stdin
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = &stderr
-				err = cmd.Run()
-				println()
-				print(stderr.String())
-				return err
-			})
-
-		}
-
-		err = group.Wait()
-		if err != nil {
-			return err
 		}
 		l.Log.Info().Msg("✨ Done")
 		return nil
 	},
+}
+
+func renderLauncher(builds []PlatformBuild) string {
+	cases := lo.Map(builds, func(build PlatformBuild, _ int) string {
+		return fmt.Sprintf(`
+	case "%s/%s": {
+		try {
+			execFileSync(
+				require.resolve('%s/package.json').replace('package.json', '%s'),
+				process.argv.slice(2),
+				{ stdio: "inherit" }
+			)
+		} catch(err) {
+			if (typeof err.status === "number") {
+				process.exit(err.status);
+			}
+			console.error(err);
+			process.exit(1);
+		}
+		break;
+	}`, build.nodeOs, build.nodeArch, build.pkgName, build.binName)
+	})
+	return strings.TrimSpace(fmt.Sprintf(`
+#!/usr/bin/env node
+
+const { execFileSync } = require('child_process');
+
+const platform = process.platform + '/' + process.arch;
+switch (platform) {
+%s
+  default:
+    throw new Error('Unsupported platform: ' + platform)
+}`, strings.Join(cases, "\n")))
+}
+
+func publishPackages(ctx context.Context, builds []PlatformBuild, mainDir string, dryRun bool) error {
+	directories := make([]string, 0, len(builds)+1)
+	for _, build := range builds {
+		directories = append(directories, build.pkgDir)
+	}
+	// The main package must not become available before its optional dependencies.
+	directories = append(directories, mainDir)
+	args := []string{"publish"}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+	for _, directory := range directories {
+		cmd := exec.CommandContext(ctx, "npm", args...)
+		cmd.Dir = directory
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("publish %s: %w", directory, err)
+		}
+	}
+	return nil
 }
 
 type ConfigSpec struct {
