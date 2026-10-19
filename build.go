@@ -51,17 +51,9 @@ var BuildCommand = &cli.Command{
 			dryPublish    = c.Bool("dry-run")
 		)
 
-		file, err := os.Open("npmreleaser.json")
+		cfg, err := loadConfig("npmreleaser.json")
 		if err != nil {
-			return errutil.WrapErr(err, "error finding npmreleaser.json")
-		}
-		defer file.Close()
-
-		dec := json.NewDecoder(file)
-		cfg := &ConfigSpec{}
-		err = dec.Decode(cfg)
-		if err != nil {
-			return errutil.WrapErr(err, "error parsing npmreleaser.json")
+			return err
 		}
 
 		pkgFiles := mapset.NewThreadUnsafeSet(
@@ -85,11 +77,11 @@ var BuildCommand = &cli.Command{
 			return errors.New("package.json is missing in npmreleaser.json")
 		}
 		pkgName, ok := cfg.Pkg["name"].(string)
-		if !ok {
+		if !ok || strings.TrimSpace(pkgName) == "" {
 			return errors.New("package.json name is required")
 		}
 		version, ok := cfg.Pkg["version"].(string)
-		if !ok {
+		if !ok || strings.TrimSpace(version) == "" {
 			return errors.New("package.json version is required")
 		}
 
